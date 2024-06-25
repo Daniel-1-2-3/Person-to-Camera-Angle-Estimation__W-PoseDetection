@@ -1,0 +1,7 @@
+Inference speeds(seconds)
+
+Unoptimized MiDaS: 0.136989097489398
+Optimized MiDaS (50% pruning): 0.11365533077110679
+
+Unoptimized YOLOv8: 0.12718694356688062
+Optimized YOLOv8: 0.04809311834461124 
