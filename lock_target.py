@@ -69,6 +69,8 @@ class Target:
                 label = f'({aim_point_x},{aim_point_y})'
                 cv2.putText(frame, label, (int(aim_point_x) + 10, int(aim_point_y) + 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
                 return frame, angle_h, angle_v
+            else:
+                return frame, 'N/A', 'N/A'
         else:
             return frame, 'N/A', 'N/A'
     
