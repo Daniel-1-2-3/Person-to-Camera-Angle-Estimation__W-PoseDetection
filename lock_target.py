@@ -15,67 +15,72 @@ class Target:
         frame = cv2.flip(frame, 1)
         results = self.yolo_model(frame, conf=0.6, save=False)
         
-        reference_points = [] #points to calculate distance that a pixel correlates to. This list includes important FACIAL keypoints (unlike keypoints list), such as eyes, ears and nose
+        reference_points = [] #points to calculate distance that a pixel correlates to. This list includes important FACIAL landmarks (unlike keypoints list), such as eyes, ears and nose
         keypoints = [] #all the points detected, this is used to calculate target point (since need to take into account points on whole body to determine chest area) 
         keypoints_x = []
         keypoints_y = []
         aim_point = None #target point 
         
-        if results[0].keypoints is not None:
-            person = (results[0].keypoints)[0] #coordinates of keypoints for first person detected
-            if person.conf is None:
-                return frame, 'N/A', 'N/A'
+        if results[0].keypoints is None or (results[0].keypoints)[0].conf is None: #if person isn't detected
+            cv2.putText(frame, 'No target detected', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 200, 0), 2)
+            return frame, None, None
             
-            for i, (keypoint, conf) in enumerate(zip(person.xy[0].tolist(), person.conf[0])):
-                x, y = keypoint
-                if int(x)!=0 and int(y)!=0:
-                    keypoints.append((int(x), int(y)))
-                    keypoints_x.append(int(x))
-                    keypoints_y.append(int(y))
-                reference_points.append((int(x), int(y))) if conf>0.7 else reference_points.append((0, 0))
+        person = (results[0].keypoints)[0] #coordinates of keypoints for first person detected
+            
+        for i, (keypoint, conf) in enumerate(zip(person.xy[0].tolist(), person.conf[0])):
+            x, y = keypoint
+            if int(x)!=0 and int(y)!=0:
+                keypoints.append((int(x), int(y)))
+                keypoints_x.append(int(x))
+                keypoints_y.append(int(y))
+            reference_points.append((int(x), int(y))) if conf>0.7 else reference_points.append((0, 0))
                 
-            if len(keypoints)!=0:
+        if len(keypoints) == 0: #if no keypoints were detected, exit
+            cv2.putText(frame, 'No facial landmarks found', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 200, 0), 2)
+            return frame, None, None
                 
-                aim_point_x = int(sum(keypoints_x[0:9])/len(keypoints_x[0:9]))
-                aim_point_y = int(sum(keypoints_y[0:9])/len(keypoints_y[0:9])) + int(frame.shape[0]/20)
-                aim_point = (aim_point_x, aim_point_y) #target point at chest 
+        aim_point_x = int(sum(keypoints_x[0:9])/len(keypoints_x[0:9]))
+        aim_point_y = int(sum(keypoints_y[0:9])/len(keypoints_y[0:9])) + int(frame.shape[0]/20)
+        aim_point = (aim_point_x, aim_point_y) #target point at chest 
                 
-                reference_points = reference_points[0:7] #refrence points for calculating the distance each pixel corresponds to 
-                mm_per_pixel, head_orientation = self.calc_mm_per_pixel(reference_points) #if head_orientation is N/A, indicates not enough reference points located on face to properly perform disance calculations
+        reference_points = reference_points[0:7] #refrence points for calculating the distance each pixel corresponds to 
+        mm_per_pixel, head_orientation = self.calc_mm_per_pixel(reference_points)
                 
-                #draw bounding boxes
-                boxes = results[0].boxes.xyxy.tolist()
-                classes = []
-                for class_id in results[0].boxes.cls.tolist():
-                    classes.append((results[0].names)[class_id])
-                for bbox in boxes:
-                    frame = cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), color=(200, 200, 200))
+        #draw bounding boxes
+        boxes = results[0].boxes.xyxy.tolist()
+        classes = []
+        for class_id in results[0].boxes.cls.tolist():
+            classes.append((results[0].names)[class_id])
+        for bbox in boxes:
+            frame = cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), color=(200, 200, 200))
                 
-                #calculate distance to person, if all displays N/A, indicates not enough keypoints available to effectively calculate distance that each pixel correlates to
-                distance, real_height, angle_h, angle_v = self.calc_distance(frame, aim_point, boxes[0][0], boxes[0][1], boxes[0][2], boxes[0][3], mm_per_pixel)
-                cv2.putText(frame, f'Aprox Distance: {str(distance)} m', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 200, 0), 2)
-                cv2.putText(frame, f'Deviation from x-axis: {str(angle_v)} deg', (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 200, 0), 2)
-                cv2.putText(frame, f'Deviation from y-axis: {str(angle_h)} deg', (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 200, 0), 2)
-                cv2.putText(frame, f'Real Height: {real_height}', (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 200, 0), 2)
-                cv2.putText(frame, f'Head Orientation {head_orientation}', (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 200, 0), 2)
-                        
-                cv2.circle(frame, (reference_points[0][0], reference_points[0][1]), 3, (255, 255, 255), -1)
-                for i, (x, y) in enumerate(reference_points[1:]):
-                    cv2.circle(frame, (x, y), 3, (255, 255, 255), -1)
-                
-                cv2.circle(frame, (aim_point), 6, (0, 0, 255), -1) #draw target point
-                cv2.circle(frame, (int(frame.shape[1]/2), int(frame.shape[0]/2)), 6, (0, 150, 0), -1) #center of frame, where cam is currently pointing 
-                
-                label = f'({aim_point_x},{aim_point_y})'
-                cv2.putText(frame, label, (int(aim_point_x) + 10, int(aim_point_y) + 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
-                return frame, angle_h, angle_v
-            else:
-                return frame, 'N/A', 'N/A'
+        #calculate distance to person, angle of camera relative to person, and real height of person
+        #if all displays None, indicates not enough keypoints available to effectively calculate distance that each pixel correlates to
+        distance, real_height, angle_h, angle_v = self.calc_distance(frame, aim_point, boxes[0][0], boxes[0][1], boxes[0][2], boxes[0][3], mm_per_pixel)
+        
+        if distance is None and real_height is None and angle_h is None and angle_v is None:
+            cv2.putText(frame, 'Failed:', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 200, 0), 2)
+            cv2.putText(frame, 'Lacking facial landmarks for reference', (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 200, 0), 2)        
         else:
-            return frame, 'N/A', 'N/A'
-    
+            cv2.putText(frame, f'Aprox Distance: {str(distance)} m', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 200, 0), 2)
+            cv2.putText(frame, f'Deviation from x-axis: {str(angle_v)} deg', (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 200, 0), 2)
+            cv2.putText(frame, f'Deviation from y-axis: {str(angle_h)} deg', (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 200, 0), 2)
+            cv2.putText(frame, f'Real Height: {real_height}', (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 200, 0), 2)
+            cv2.putText(frame, f'Head Orientation {head_orientation}', (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 200, 0), 2)
+                        
+        cv2.circle(frame, (reference_points[0][0], reference_points[0][1]), 3, (255, 255, 255), -1)
+        for (x, y) in reference_points[1:]: #draw all facial landmarks
+            cv2.circle(frame, (x, y), 3, (255, 255, 255), -1)
+                
+        cv2.circle(frame, (aim_point), 6, (0, 0, 255), -1) #draw target point
+        label = f'({aim_point_x},{aim_point_y})' #coordinates of target point
+        cv2.putText(frame, label, (int(aim_point_x) + 10, int(aim_point_y) + 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+        cv2.circle(frame, (int(frame.shape[1]/2), int(frame.shape[0]/2)), 6, (0, 150, 0), -1) #center of frame, where cam is currently pointing 
+                
+        return frame, angle_h, angle_v
+        
     def calc_mm_per_pixel(self, ref_list):
-        mm_per_pixel = 0 
+        mm_per_pixel = None
         nose, right_eye, left_eye, right_ear, left_ear = ref_list[:5]
         orientation = 'N/A'
         
@@ -128,8 +133,8 @@ class Target:
     
     #!!! current calculations assume camera principle axis is perpendicular to the object if object was centered
     def calc_distance(self, frame, aim_point, x, y, w, h, mm_per_pixel): #x, y, w, h are bounding box coordinates, top left and bottom right
-        if mm_per_pixel == 0:
-            return 'N/A', 'N/A', 'N/A', 'N/A' 
+        if mm_per_pixel == None: #case there were not enough facial landmarks to properly calculate real distance per pixel 
+            return None, None, None, None
         
         #below parameters specified by raspberry pi documentation, cam module v1, OmniVision OV5647 sensor
         focal_length = 3.6
