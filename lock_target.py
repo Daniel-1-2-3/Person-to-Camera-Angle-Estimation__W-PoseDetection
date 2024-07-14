@@ -181,3 +181,7 @@ if __name__ == "__main__":
     
     print('Average inference time', sum(speeds)/len(speeds))
     
+    """
+    GREEN dot is where camera is currently pointing at
+    RED dot is where the camera should move to in order to aim at the person
+    """

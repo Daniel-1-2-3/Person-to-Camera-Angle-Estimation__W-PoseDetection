@@ -12,6 +12,7 @@ PythonTLSSnapshot, FuncTorchDynamicLayerFrontMode, PreDispatch, PythonDispatcher
 
 qconfig = torch.quantization.get_default_qat_qconfig('qnnpack')
 During quantization, configured the quantized model to run on backend qnnpack, but it was not supported by this CPU,
-instead use backend fbgemm 
+instead use backend fbgemm. 
+IN ADDITION: quant stubs (input/output gates that convert floating point inputs to integers) were not added during traing
 
 Pruning successful, 50% pruning used on all layers 
